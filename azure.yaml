@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: foundry-financial-digital-twins
+
+requiredVersions:
+  azd: ">=1.37.0"
+
+services:
+  web:
+    project: .
+    host: containerapp
+    language: python
+    docker:
+      path: ./Dockerfile
+      buildArgs:
+        - "NPM_REGISTRY=${NPM_REGISTRY=https://registry.npmjs.org/}"
+        - "PIP_INDEX_URL=${PIP_INDEX_URL=https://pypi.org/simple}"
+
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/preflight.ps1
+  postdeploy:
+    shell: pwsh
+    run: ./scripts/postdeploy.ps1
+
+infra:
+  provider: bicep
+  path: ./infra

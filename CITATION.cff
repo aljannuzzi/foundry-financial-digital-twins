@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this reference implementation, cite the software and the exact version or commit."
+title: "Foundry Financial Digital Twins"
+type: software
+version: 0.1.0
+authors:
+  - name: "Foundry Financial Digital Twins contributors"
+license: MIT
+abstract: >-
+  A non-production reference implementation for controlled financial-product
+  scenario testing with synthetic Agro customer agents, a deterministic
+  baseline, and optional Microsoft Foundry execution.
+keywords:
+  - synthetic data
+  - digital twins
+  - responsible AI
+  - Microsoft Foundry
+  - financial services

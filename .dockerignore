@@ -1,0 +1,13 @@
+.azure
+.env
+.env.*
+.git
+.github
+.pytest_cache
+.ruff_cache
+.venv
+docs
+output
+tests
+ui/node_modules
+ui/dist

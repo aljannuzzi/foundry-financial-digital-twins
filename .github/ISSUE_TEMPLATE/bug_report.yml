@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible defect in the reference implementation
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include customer data, personal data, secrets, tenant details, internal URLs, or confidential information.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Population generation or validation
+        - Deterministic simulation
+        - Foundry simulation
+        - API
+        - Web UI
+        - Azure deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Provide sanitized commands, inputs, and steps.
+      placeholder: |
+        1. Run ...
+        2. Submit ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Python/Node/pnpm versions, local or Azure, and deterministic or Foundry engine.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      description: Include only the smallest useful error or correlation ID. Remove identifiers and sensitive values.
+      render: text
+  - type: checkboxes
+    id: safe
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed personal data, credentials, tenant/subscription details, internal URLs, and confidential content.
+          required: true
+        - label: This is not a public security-vulnerability report.
+          required: true

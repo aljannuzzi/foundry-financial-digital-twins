@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a bounded improvement to the synthetic-scenario reference implementation
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Proposals must preserve the synthetic-only, non-production, non-decisioning scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What research, engineering, or documentation problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful change and its alternatives.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Safety and scope boundaries
+      description: Explain effects on privacy, Responsible AI, model risk, security, cost, and prohibited financial uses.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable, testable completion criteria.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: The proposal does not require real customer data or consequential financial decisioning.
+          required: true
