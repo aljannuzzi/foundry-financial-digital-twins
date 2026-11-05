@@ -403,7 +403,10 @@ function App() {
               {selectedDecision.requested_changes.length > 0 && (
                 <div className="requested-change">
                   <h4>O que faria este agente reconsiderar</h4>
-                  <p>{selectedDecision.requested_changes[0]}</p>
+                  <p>
+                    <strong>{selectedDecision.requested_changes[0].item}:</strong>{' '}
+                    {selectedDecision.requested_changes[0].requested_value}
+                  </p>
                 </div>
               )}
             </>

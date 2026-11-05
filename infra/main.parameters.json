@@ -14,8 +14,14 @@
     "allowedIpCidr": {
       "value": "${DEMO_ALLOWED_IP_CIDR}"
     },
+    "additionalAllowedIpCidr": {
+      "value": "${DEMO_ADDITIONAL_ALLOWED_IP_CIDR=}"
+    },
     "webExists": {
       "value": "${SERVICE_WEB_RESOURCE_EXISTS=false}"
+    },
+    "webImageName": {
+      "value": "${SERVICE_WEB_IMAGE_NAME=mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}"
     },
     "modelName": {
       "value": "${AZURE_AI_MODEL_NAME=gpt-5.4-mini}"

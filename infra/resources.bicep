@@ -4,7 +4,9 @@ param environmentName string
 param location string
 param principalId string
 param allowedIpCidr string
+param additionalAllowedIpCidr string
 param webExists bool
+param webImageName string
 param modelName string
 param modelVersion string
 param modelSkuName string
@@ -16,6 +18,13 @@ var projectName = 'financial-twins'
 var storageName = take('fdt${token}', 24)
 var cosmosName = take('fdt-cosmos-${token}', 44)
 var registryName = take('fdt${token}acr', 50)
+var registryIdentityName = take('id-${environmentName}-registry', 128)
+var webIdentityName = take('id-${environmentName}-web', 128)
+var pipelineIdentityName = take('id-${environmentName}-profiles', 128)
+var simulationIdentityName = take('id-${environmentName}-foundry', 128)
+var virtualNetworkName = take('vnet-${environmentName}', 64)
+var infrastructureSubnetName = 'container-apps-infrastructure'
+var privateEndpointSubnetName = 'private-endpoints'
 var containerEnvironmentName = take('cae-${environmentName}', 60)
 var webName = take('ca-${environmentName}', 32)
 var pipelineJobName = take('job-${environmentName}-profiles', 32)
@@ -66,6 +75,44 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-07-01' = {
+  name: virtualNetworkName
+  location: location
+  tags: commonTags
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        '10.42.0.0/16'
+      ]
+    }
+  }
+}
+
+resource infrastructureSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
+  parent: virtualNetwork
+  name: infrastructureSubnetName
+  properties: {
+    addressPrefix: '10.42.0.0/23'
+    delegations: [
+      {
+        name: 'container-apps'
+        properties: {
+          serviceName: 'Microsoft.App/environments'
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
+  parent: virtualNetwork
+  name: privateEndpointSubnetName
+  properties: {
+    addressPrefix: '10.42.2.0/24'
+    privateEndpointNetworkPolicies: 'Disabled'
+  }
+}
+
 resource foundry 'Microsoft.CognitiveServices/accounts@2026-09-01' = {
   name: foundryName
   location: location
@@ -98,6 +145,9 @@ resource project 'Microsoft.CognitiveServices/accounts/projects@2026-09-01' = {
     displayName: 'Financial Digital Twins'
     description: 'Synthetic Agro product scenario laboratory'
   }
+  dependsOn: [
+    model
+  ]
 }
 
 resource model 'Microsoft.CognitiveServices/accounts/deployments@2026-09-01' = {
@@ -156,7 +206,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2026-09-01' = {
     defaultToOAuthAuthentication: true
     isHnsEnabled: true
     minimumTlsVersion: 'TLS1_2'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
     supportsHttpsTrafficOnly: true
   }
 }
@@ -199,7 +249,7 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2026-03-15' = {
       }
     ]
     minimalTlsVersion: 'Tls12'
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: 'Disabled'
   }
 }
 
@@ -261,6 +311,116 @@ resource twinDecisions 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/conta
   }
 }
 
+resource cosmosPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: 'privatelink.documents.azure.com'
+  location: 'global'
+  tags: commonTags
+}
+
+resource cosmosPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: cosmosPrivateDnsZone
+  name: 'cosmos-${environmentName}'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource cosmosPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = {
+  name: take('pe-${cosmosName}', 80)
+  location: location
+  tags: commonTags
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: 'cosmos'
+        properties: {
+          groupIds: [
+            'Sql'
+          ]
+          privateLinkServiceId: cosmos.id
+        }
+      }
+    ]
+    subnet: {
+      id: privateEndpointSubnet.id
+    }
+  }
+}
+
+resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = {
+  parent: cosmosPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'cosmos'
+        properties: {
+          privateDnsZoneId: cosmosPrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource blobPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = {
+  name: 'privatelink.blob.core.windows.net'
+  location: 'global'
+  tags: commonTags
+}
+
+resource blobPrivateDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = {
+  parent: blobPrivateDnsZone
+  name: 'blob-${environmentName}'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource blobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-07-01' = {
+  name: take('pe-${storageName}-blob', 80)
+  location: location
+  tags: commonTags
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: 'blob'
+        properties: {
+          groupIds: [
+            'blob'
+          ]
+          privateLinkServiceId: storage.id
+        }
+      }
+    ]
+    subnet: {
+      id: privateEndpointSubnet.id
+    }
+  }
+}
+
+resource blobPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-07-01' = {
+  parent: blobPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'blob'
+        properties: {
+          privateDnsZoneId: blobPrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
 resource registry 'Microsoft.ContainerRegistry/registries@2025-11-01' = {
   name: registryName
   location: location
@@ -273,6 +433,43 @@ resource registry 'Microsoft.ContainerRegistry/registries@2025-11-01' = {
     anonymousPullEnabled: false
     dataEndpointEnabled: false
     publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource registryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: registryIdentityName
+  location: location
+  tags: commonTags
+}
+
+resource webIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: webIdentityName
+  location: location
+  tags: commonTags
+}
+
+resource pipelineIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: pipelineIdentityName
+  location: location
+  tags: commonTags
+}
+
+resource simulationIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: simulationIdentityName
+  location: location
+  tags: commonTags
+}
+
+resource registryIdentityPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(registry.id, registryIdentity.id, acrPullRoleId)
+  scope: registry
+  properties: {
+    principalId: registryIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      acrPullRoleId
+    )
   }
 }
 
@@ -300,6 +497,16 @@ resource containerEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' = {
         sharedKey: logs.listKeys().primarySharedKey
       }
     }
+    vnetConfiguration: {
+      infrastructureSubnetId: infrastructureSubnet.id
+      internal: false
+    }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+    ]
   }
 }
 
@@ -346,14 +553,43 @@ var applicationEnvironment = [
   }
 ]
 
-resource existingWeb 'Microsoft.App/containerApps@2026-01-01' existing = if (webExists) {
-  name: webName
-}
+var webEnvironment = concat(applicationEnvironment, [
+  {
+    name: 'AZURE_CLIENT_ID'
+    value: webIdentity.properties.clientId
+  }
+])
 
-var placeholderImage = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
-var activeImage = webExists
-  ? existingWeb!.properties.template.containers[0].image
-  : placeholderImage
+var pipelineEnvironment = concat(applicationEnvironment, [
+  {
+    name: 'AZURE_CLIENT_ID'
+    value: pipelineIdentity.properties.clientId
+  }
+])
+
+var simulationEnvironment = concat(applicationEnvironment, [
+  {
+    name: 'AZURE_CLIENT_ID'
+    value: simulationIdentity.properties.clientId
+  }
+])
+
+var activeImage = webImageName
+var webIpRestrictions = concat([
+  {
+    action: 'Allow'
+    description: 'Primary validation client'
+    ipAddressRange: allowedIpCidr
+    name: 'validation-client-primary'
+  }
+], empty(additionalAllowedIpCidr) ? [] : [
+  {
+    action: 'Allow'
+    description: 'Additional validation client'
+    ipAddressRange: additionalAllowedIpCidr
+    name: 'validation-client-additional'
+  }
+])
 
 resource web 'Microsoft.App/containerApps@2026-01-01' = {
   name: webName
@@ -362,7 +598,11 @@ resource web 'Microsoft.App/containerApps@2026-01-01' = {
     'azd-service-name': 'web'
   })
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${registryIdentity.id}': {}
+      '${webIdentity.id}': {}
+    }
   }
   properties: {
     managedEnvironmentId: containerEnvironment.id
@@ -371,20 +611,13 @@ resource web 'Microsoft.App/containerApps@2026-01-01' = {
       ingress: {
         allowInsecure: false
         external: true
-        ipSecurityRestrictions: [
-          {
-            action: 'Allow'
-            description: 'Validation client'
-            ipAddressRange: allowedIpCidr
-            name: 'validation-client'
-          }
-        ]
+        ipSecurityRestrictions: webIpRestrictions
         targetPort: webExists ? 8000 : 80
         transport: 'auto'
       }
       registries: [
         {
-          identity: 'system'
+          identity: registryIdentity.id
           server: registry.properties.loginServer
         }
       ]
@@ -394,7 +627,7 @@ resource web 'Microsoft.App/containerApps@2026-01-01' = {
         {
           name: 'web'
           image: activeImage
-          env: applicationEnvironment
+          env: webEnvironment
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -407,6 +640,9 @@ resource web 'Microsoft.App/containerApps@2026-01-01' = {
       }
     }
   }
+  dependsOn: [
+    registryIdentityPull
+  ]
 }
 
 resource pipelineJob 'Microsoft.App/jobs@2026-01-01' = {
@@ -414,7 +650,11 @@ resource pipelineJob 'Microsoft.App/jobs@2026-01-01' = {
   location: location
   tags: commonTags
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${registryIdentity.id}': {}
+      '${pipelineIdentity.id}': {}
+    }
   }
   properties: {
     environmentId: containerEnvironment.id
@@ -424,7 +664,7 @@ resource pipelineJob 'Microsoft.App/jobs@2026-01-01' = {
       triggerType: 'Manual'
       registries: [
         {
-          identity: 'system'
+          identity: registryIdentity.id
           server: registry.properties.loginServer
         }
       ]
@@ -445,7 +685,7 @@ resource pipelineJob 'Microsoft.App/jobs@2026-01-01' = {
           args: [
             'python -m financial_twins provision-agents && python -m financial_twins generate --azure --count 120 --seed agro-demo-2026 --output /tmp/output'
           ]
-          env: applicationEnvironment
+          env: pipelineEnvironment
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -455,6 +695,9 @@ resource pipelineJob 'Microsoft.App/jobs@2026-01-01' = {
       ]
     }
   }
+  dependsOn: [
+    registryIdentityPull
+  ]
 }
 
 resource simulationJob 'Microsoft.App/jobs@2026-01-01' = {
@@ -462,7 +705,11 @@ resource simulationJob 'Microsoft.App/jobs@2026-01-01' = {
   location: location
   tags: commonTags
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${registryIdentity.id}': {}
+      '${simulationIdentity.id}': {}
+    }
   }
   properties: {
     environmentId: containerEnvironment.id
@@ -472,7 +719,7 @@ resource simulationJob 'Microsoft.App/jobs@2026-01-01' = {
       triggerType: 'Manual'
       registries: [
         {
-          identity: 'system'
+          identity: registryIdentity.id
           server: registry.properties.loginServer
         }
       ]
@@ -500,8 +747,10 @@ resource simulationJob 'Microsoft.App/jobs@2026-01-01' = {
             'agro-demo-2026'
             '--output'
             '/tmp/foundry-simulation.json'
+            '--concurrency'
+            '2'
           ]
-          env: applicationEnvironment
+          env: simulationEnvironment
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -510,53 +759,16 @@ resource simulationJob 'Microsoft.App/jobs@2026-01-01' = {
       ]
     }
   }
-}
-
-resource webRegistryPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(registry.id, web.id, acrPullRoleId)
-  scope: registry
-  properties: {
-    principalId: web.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      acrPullRoleId
-    )
-  }
-}
-
-resource pipelineRegistryPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(registry.id, pipelineJob.id, acrPullRoleId)
-  scope: registry
-  properties: {
-    principalId: pipelineJob.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      acrPullRoleId
-    )
-  }
-
-}
-
-resource simulationRegistryPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(registry.id, simulationJob.id, acrPullRoleId)
-  scope: registry
-  properties: {
-    principalId: simulationJob.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      acrPullRoleId
-    )
-  }
+  dependsOn: [
+    registryIdentityPull
+  ]
 }
 
 resource webFoundryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(project.id, web.id, foundryAgentConsumerRoleId)
+  name: guid(project.id, webIdentity.id, foundryAgentConsumerRoleId)
   scope: project
   properties: {
-    principalId: web.identity.principalId
+    principalId: webIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -566,10 +778,10 @@ resource webFoundryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 
 resource pipelineFoundryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(foundry.id, pipelineJob.id, foundryUserRoleId)
+  name: guid(foundry.id, pipelineIdentity.id, foundryUserRoleId)
   scope: foundry
   properties: {
-    principalId: pipelineJob.identity.principalId
+    principalId: pipelineIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -580,10 +792,10 @@ resource pipelineFoundryAccess 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 resource simulationFoundryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(project.id, simulationJob.id, foundryAgentConsumerRoleId)
+  name: guid(project.id, simulationIdentity.id, foundryAgentConsumerRoleId)
   scope: project
   properties: {
-    principalId: simulationJob.identity.principalId
+    principalId: simulationIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -593,10 +805,10 @@ resource simulationFoundryAccess 'Microsoft.Authorization/roleAssignments@2022-0
 }
 
 resource webStorageAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storage.id, web.id, blobDataContributorRoleId)
+  name: guid(storage.id, webIdentity.id, blobDataContributorRoleId)
   scope: storage
   properties: {
-    principalId: web.identity.principalId
+    principalId: webIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -606,10 +818,10 @@ resource webStorageAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 
 resource pipelineStorageAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storage.id, pipelineJob.id, blobDataContributorRoleId)
+  name: guid(storage.id, pipelineIdentity.id, blobDataContributorRoleId)
   scope: storage
   properties: {
-    principalId: pipelineJob.identity.principalId
+    principalId: pipelineIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -620,10 +832,10 @@ resource pipelineStorageAccess 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 resource simulationStorageAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storage.id, simulationJob.id, blobDataContributorRoleId)
+  name: guid(storage.id, simulationIdentity.id, blobDataContributorRoleId)
   scope: storage
   properties: {
-    principalId: simulationJob.identity.principalId
+    principalId: simulationIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -634,9 +846,9 @@ resource simulationStorageAccess 'Microsoft.Authorization/roleAssignments@2022-0
 
 resource webCosmosAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2026-03-15' = {
   parent: cosmos
-  name: guid(cosmos.id, web.id, cosmosDataContributorRoleId)
+  name: guid(cosmos.id, webIdentity.id, cosmosDataContributorRoleId)
   properties: {
-    principalId: web.identity.principalId
+    principalId: webIdentity.properties.principalId
     roleDefinitionId: '${cosmos.id}/sqlRoleDefinitions/${cosmosDataContributorRoleId}'
     scope: cosmos.id
   }
@@ -644,9 +856,9 @@ resource webCosmosAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignmen
 
 resource pipelineCosmosAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2026-03-15' = {
   parent: cosmos
-  name: guid(cosmos.id, pipelineJob.id, cosmosDataContributorRoleId)
+  name: guid(cosmos.id, pipelineIdentity.id, cosmosDataContributorRoleId)
   properties: {
-    principalId: pipelineJob.identity.principalId
+    principalId: pipelineIdentity.properties.principalId
     roleDefinitionId: '${cosmos.id}/sqlRoleDefinitions/${cosmosDataContributorRoleId}'
     scope: cosmos.id
   }
@@ -655,9 +867,9 @@ resource pipelineCosmosAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssi
 
 resource simulationCosmosAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2026-03-15' = {
   parent: cosmos
-  name: guid(cosmos.id, simulationJob.id, cosmosDataContributorRoleId)
+  name: guid(cosmos.id, simulationIdentity.id, cosmosDataContributorRoleId)
   properties: {
-    principalId: simulationJob.identity.principalId
+    principalId: simulationIdentity.properties.principalId
     roleDefinitionId: '${cosmos.id}/sqlRoleDefinitions/${cosmosDataContributorRoleId}'
     scope: cosmos.id
   }

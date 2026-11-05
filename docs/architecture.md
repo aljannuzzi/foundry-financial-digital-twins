@@ -125,20 +125,20 @@ RBAC. Role scope and least privilege still require review before broader use.
 
 ## Network
 
-The reference implementation uses identity-protected public endpoints for data
-and AI services and restricts web ingress to a CIDR supplied by the deployer.
-That is suitable only for a bounded non-production demonstration. A banking
-deployment would additionally require:
+The Container Apps environment is integrated with a dedicated virtual network.
+Cosmos DB and Blob Storage use private endpoints and private DNS; public network
+access remains disabled by policy. The web application keeps external ingress
+restricted to a CIDR supplied by the deployer. Foundry, ACR, and telemetry use
+identity-protected public endpoints. This remains suitable only for a bounded
+non-production demonstration. A production banking deployment would add:
 
-- private endpoints;
-- VNet integration;
-- private DNS;
 - restricted egress;
+- network controls for Foundry, ACR, and telemetry;
 - Microsoft Entra authentication for the application;
 - organizational policies and customer-managed keys when required.
 
-These controls are documented requirements, not controls implemented by this
-reference topology.
+The private data plane is implemented by this reference topology. The remaining
+controls are documented requirements, not implemented production controls.
 
 ## Observability
 

@@ -16,7 +16,7 @@ async def main() -> None:
             default_product_variants()[0],
         )
     finally:
-        engine.close()
+        await engine.close()
     print(decision.model_dump_json(indent=2))
 
 

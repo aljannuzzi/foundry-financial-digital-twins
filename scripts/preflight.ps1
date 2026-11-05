@@ -40,6 +40,8 @@ $requiredProviders = @(
     'Microsoft.ContainerRegistry',
     'Microsoft.DocumentDB',
     'Microsoft.Insights',
+    'Microsoft.ManagedIdentity',
+    'Microsoft.Network',
     'Microsoft.OperationalInsights',
     'Microsoft.Storage'
 )
@@ -89,7 +91,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "Resource-group state could not be read for $resourceGroup."
 }
 $webExists = $false
+$webImageName = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 if ($groupExists -eq 'true') {
+    $managedEnvironments = az containerapp env list `
+        --subscription $subscription `
+        --resource-group $resourceGroup `
+        --output json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Existing Container Apps environments could not be read.'
+    }
+    $existingEnvironment = $managedEnvironments |
+        Where-Object { $_.name -eq "cae-$environmentName" } |
+        Select-Object -First 1
+    if (
+        $existingEnvironment -and
+        [string]::IsNullOrWhiteSpace(
+            $existingEnvironment.properties.vnetConfiguration.infrastructureSubnetId
+        )
+    ) {
+        throw @"
+The existing Container Apps environment uses Azure-managed networking and
+cannot be upgraded in place to the VNet/private-endpoint topology. This
+non-production reference environment must be recreated before continuing.
+Run 'azd down --purge', confirm deletion, and then run 'azd up' again.
+"@
+    }
+
     $containerApps = az containerapp list `
         --subscription $subscription `
         --resource-group $resourceGroup `
@@ -99,8 +126,11 @@ if ($groupExists -eq 'true') {
     }
     $existingWeb = $containerApps |
         Where-Object { $_.tags.'azd-service-name' -eq 'web' } |
-        Select-Object -First 1 -ExpandProperty name
-    $webExists = -not [string]::IsNullOrWhiteSpace($existingWeb)
+        Select-Object -First 1
+    $webExists = $null -ne $existingWeb
+    if ($webExists) {
+        $webImageName = $existingWeb.properties.template.containers[0].image
+    }
     $account = az cognitiveservices account list `
         --subscription $subscription `
         --resource-group $resourceGroup `
@@ -132,6 +162,10 @@ if ($groupExists -eq 'true') {
 azd env set SERVICE_WEB_RESOURCE_EXISTS $webExists.ToString().ToLowerInvariant()
 if ($LASTEXITCODE -ne 0) {
     throw 'SERVICE_WEB_RESOURCE_EXISTS could not be updated.'
+}
+azd env set SERVICE_WEB_IMAGE_NAME $webImageName
+if ($LASTEXITCODE -ne 0) {
+    throw 'SERVICE_WEB_IMAGE_NAME could not be updated.'
 }
 
 $additionalCapacity = [Math]::Max(0, $modelCapacity - $existingCapacity)

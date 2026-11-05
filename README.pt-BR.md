@@ -198,9 +198,10 @@ removível, contendo:
 
 As cargas de trabalho usam identidades gerenciadas atribuídas pelo sistema e
 RBAC do Azure. A autenticação local/por chave está desabilitada no Foundry,
-Storage e Cosmos DB. A implantação de referência atual ainda usa endpoints
-públicos de serviço, e o tráfego de entrada da aplicação web é restrito apenas
-por um CIDR fornecido pelo chamador. Consulte
+Storage e Cosmos DB. O Container Apps usa uma VNet dedicada e endpoints
+privados/DNS privado para Cosmos DB e Blob Storage. Foundry, ACR e telemetria
+permanecem endpoints públicos protegidos por identidade, enquanto o tráfego de
+entrada da aplicação web é restrito por um CIDR fornecido pelo chamador. Consulte
 [Arquitetura](docs/architecture.md) e o
 [modelo de ameaças](docs/threat-model.md) antes de implantar.
 
@@ -336,6 +337,8 @@ azd env new fdt-demo
 azd env set AZURE_SUBSCRIPTION_ID "<subscription-id>"
 azd env set AZURE_LOCATION "<azure-region>"
 azd env set DEMO_ALLOWED_IP_CIDR "<public-ip>/32"
+# Opcional quando o proxy corporativo alterna entre dois endereços de saída:
+azd env set DEMO_ADDITIONAL_ALLOWED_IP_CIDR "<second-public-ip>/32"
 
 # Opcional: substituir os padrões por um modelo/versão/SKU disponível em sua região.
 azd env set AZURE_AI_MODEL_NAME "<model-name>"
@@ -345,6 +348,13 @@ azd env set AZURE_AI_MODEL_CAPACITY "<capacity>"
 
 azd up
 ```
+
+> [!IMPORTANT]
+> O tipo de rede do Container Apps é imutável. Ambientes criados por uma revisão
+> antiga e pública deste repositório não podem ser atualizados no mesmo recurso.
+> Como este é um ambiente de referência sintético e não produtivo, execute
+> `azd down --purge`, confirme a exclusão e implante novamente com `azd up`.
+> O preflight bloqueia uma migração parcial no mesmo ambiente.
 
 O hook de preprovision verifica o registro de provedores, a disponibilidade do
 modelo, a SKU e a cota incremental. O hook de postdeploy atualiza os dois jobs
@@ -357,9 +367,10 @@ ambiente de controles bancários.
 
 O job provisionado avalia três variantes para 120 perfis — 360 solicitações ao
 modelo — e depois persiste perfis/artefatos e decisões estruturadas da execução.
-Ele tem timeout de execução de duas horas, nenhuma repetição de réplica e um
-limite de simultaneidade de oito dentro da aplicação. Avalie a cota e o custo
-antes de iniciá-lo.
+Ele tem timeout de execução de duas horas, nenhuma repetição de réplica, usa
+backoff por `Retry-After` e tem limite de simultaneidade dois no lote. As
+requisições Foundry interativas permanecem globalmente limitadas a oito. Avalie
+a cota e o custo antes de iniciá-lo.
 
 ```powershell
 $subscription = azd env get-value AZURE_SUBSCRIPTION_ID
@@ -442,18 +453,18 @@ temporária ou retidos separadamente, e remova quaisquer artefatos locais em
   tornam esta solução pronta para produção.
 - A aplicação web de referência usa uma lista de IPs permitidos em vez de
   autenticação de aplicação do Microsoft Entra.
-- Os endpoints do Foundry, Storage, Cosmos DB, ACR e telemetria permanecem
-  acessíveis publicamente na topologia de referência, sujeitos aos controles de
-  identidade/serviço.
+- Cosmos DB e Blob Storage são acessados por endpoints privados e DNS privado a
+  partir da VNet do Container Apps. Foundry, ACR e telemetria permanecem
+  endpoints públicos sujeitos a controles de identidade e serviço.
 - Implantações de modelo que usam uma SKU global podem processar dados fora da
   região de implantação; consulte os termos atuais do Azure e os requisitos de
   zona de dados.
 - A telemetria deve conter IDs, versões, hashes, latência e contagens de tokens
   — não perfis brutos, atributos de auditoria nem conteúdo confidencial.
-- Uma implantação bancária exigiria ainda endpoints privados, integração com
-  VNet, DNS privado, saída controlada, autenticação de aplicação, políticas
-  organizacionais, decisões sobre gerenciamento de chaves, monitoramento e
-  resposta a incidentes.
+- Uma implantação bancária de produção exigiria ainda saída controlada,
+  autenticação da aplicação, controles de rede para os serviços públicos
+  restantes, políticas organizacionais, decisões sobre gerenciamento de chaves,
+  monitoramento e resposta a incidentes.
 
 Leia [SECURITY.md](SECURITY.md) e
 [docs/threat-model.md](docs/threat-model.md). Relate vulnerabilidades pelo

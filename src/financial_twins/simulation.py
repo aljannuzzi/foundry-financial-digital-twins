@@ -9,6 +9,7 @@ from uuid import uuid4
 from .models import (
     DecisionReason,
     ProductVariant,
+    RequestedChange,
     SimulationResult,
     TwinDecision,
     TwinProfile,
@@ -127,15 +128,39 @@ def deterministic_decision(profile: TwinProfile, variant: ProductVariant) -> Twi
         )
         for factor in [*strongest, *weakest]
     ]
-    requested_changes: list[str] = []
+    requested_changes: list[RequestedChange] = []
     if "affordability" in weakest:
-        requested_changes.append("Reduce the monthly fee or add a fee waiver.")
+        requested_changes.append(
+            RequestedChange(
+                item="monthly_fee_brl",
+                requested_value="Reduce the monthly fee or add a fee waiver.",
+                evidence_ids=["H2", "O6", "O8"],
+            )
+        )
     if "liquidity_fit" in weakest:
-        requested_changes.append("Align the grace period with the production cycle.")
+        requested_changes.append(
+            RequestedChange(
+                item="grace_days",
+                requested_value="Align the grace period with the production cycle.",
+                evidence_ids=["H1", "D1", "O1"],
+            )
+        )
     if "protection_fit" in weakest:
-        requested_changes.append("Clarify or expand the protection bundle.")
+        requested_changes.append(
+            RequestedChange(
+                item="insurance_bundle",
+                requested_value="Clarify or expand the protection bundle.",
+                evidence_ids=["H4", "O4"],
+            )
+        )
     if "advice_fit" in weakest:
-        requested_changes.append("Offer a clearer specialist-advisor service level.")
+        requested_changes.append(
+            RequestedChange(
+                item="advisor_access",
+                requested_value="Offer a clearer specialist-advisor service level.",
+                evidence_ids=["H6", "O7"],
+            )
+        )
 
     confidence = sum(trait.confidence for trait in profile.hypotheses) / len(profile.hypotheses)
     return TwinDecision(

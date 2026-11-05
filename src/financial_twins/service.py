@@ -42,7 +42,13 @@ class SimulationService:
                     variant: ProductVariant,
                 ) -> TwinDecision:
                     async with FOUNDRY_GLOBAL_LIMIT:
-                        return await engine.evaluate(profile, variant)
+                        for attempt in range(3):
+                            try:
+                                return await engine.evaluate(profile, variant)
+                            except FoundryResponseError:
+                                if attempt == 2:
+                                    raise
+                        raise FoundryResponseError("Customer-twin response retries were exhausted")
 
                 outcomes = await asyncio.gather(
                     *(evaluate(profile, variant) for profile, variant in batch),

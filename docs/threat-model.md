@@ -54,8 +54,8 @@ reference environment. It does not provide user-level authentication.
 
 ## Residual risks accepted by the reference implementation
 
-- Azure service endpoints are public, although protected by identity and
-  service configuration;
+- Cosmos DB and Blob Storage use private endpoints and private DNS, while
+  Foundry, ACR, and telemetry remain public identity-protected endpoints;
 - web access is restricted by IP rather than authenticated through Entra ID;
 - a Global Standard model SKU can process outside the deployment region;
 - agent output can be plausible, variable, biased, or unsupported despite

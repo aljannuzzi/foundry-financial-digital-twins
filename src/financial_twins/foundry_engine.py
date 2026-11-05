@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-from typing import Any
 
 from azure.ai.projects.aio import AIProjectClient
 from azure.identity.aio import DefaultAzureCredential
-from openai import OpenAIError
+from openai import OpenAIError, RateLimitError
 from pydantic import ValidationError
 
 from .agents import (
@@ -21,6 +21,30 @@ from .errors import (
 )
 from .models import ProductVariant, TwinDecision, TwinProfile
 from .simulation import DISCLAIMER
+
+
+def parse_agent_output(output_text: str) -> TwinDecision:
+    normalized = output_text.strip()
+    if normalized.startswith("```"):
+        normalized = normalized.removeprefix("```json")
+        normalized = normalized.removeprefix("```")
+        normalized = normalized.removesuffix("```").strip()
+    start = normalized.find("{")
+    if start < 0:
+        raise ValueError("Agent output did not contain a JSON object")
+    data, end = json.JSONDecoder().raw_decode(normalized[start:])
+    decision = TwinDecision.model_validate(data)
+    trailing = normalized[start + end :].strip()
+    if trailing:
+        decision = decision.model_copy(
+            update={
+                "policy_flags": [
+                    *decision.policy_flags,
+                    "agent_output_trailing_content",
+                ]
+            }
+        )
+    return decision
 
 
 class FoundryTwinEngine:
@@ -116,32 +140,66 @@ class FoundryTwinEngine:
                         "contribution": "number -1..1",
                     }
                 ],
-                "requested_changes": [],
+                "requested_changes": [
+                    {
+                        "item": "product parameter",
+                        "requested_value": "specific requested adjustment",
+                        "evidence_ids": ["allowed IDs only"],
+                    }
+                ],
                 "missing_information": [],
                 "unsupported_inferences": [],
                 "policy_flags": [],
             },
         }
+        input_text = json.dumps(
+            payload,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        response = None
+        for attempt in range(8):
+            try:
+                if self._agent_name:
+                    response = await self._client.responses.create(input=input_text)
+                else:
+                    response = await self._client.responses.parse(
+                        model=self._model,
+                        instructions=instruction,
+                        input=input_text,
+                        max_output_tokens=800,
+                        store=False,
+                        text_format=TwinDecision,
+                    )
+                break
+            except RateLimitError as exc:
+                if attempt == 7:
+                    raise FoundryProviderError(
+                        "Microsoft Foundry rate limit persisted after retries"
+                    ) from exc
+                retry_after = exc.response.headers.get("retry-after")
+                retry_after_ms = exc.response.headers.get("retry-after-ms")
+                delay = (
+                    float(retry_after)
+                    if retry_after
+                    else float(retry_after_ms) / 1000
+                    if retry_after_ms
+                    else min(60.0, float(2 ** (attempt + 1)))
+                )
+                await asyncio.sleep(max(1.0, delay))
+            except OpenAIError as exc:
+                raise FoundryProviderError("Microsoft Foundry invocation failed") from exc
+        if response is None:
+            raise FoundryProviderError("Microsoft Foundry invocation returned no response")
         try:
-            request: dict[str, Any] = {
-                "input": json.dumps(
-                    payload,
-                    separators=(",", ":"),
-                    ensure_ascii=True,
-                ),
-                "max_output_tokens": 800,
-                "store": False,
-            }
-            if not self._agent_name:
-                request["model"] = self._model
-                request["instructions"] = instruction
-            response = await self._client.responses.create(**request)
-        except OpenAIError as exc:
-            raise FoundryProviderError("Microsoft Foundry invocation failed") from exc
-        try:
-            data: dict[str, Any] = json.loads(response.output_text)
-            decision = TwinDecision.model_validate(data)
-        except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+            if self._agent_name:
+                decision = parse_agent_output(response.output_text)
+            else:
+                decision = response.output_parsed
+                if decision is None:
+                    raise ValueError("Structured response contained no parsed output")
+                decision = TwinDecision.model_validate(decision)
+        except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
             raise FoundryResponseError(
                 "Microsoft Foundry returned an invalid customer-twin response"
             ) from exc
@@ -157,6 +215,12 @@ class FoundryTwinEngine:
             for evidence_id in reason.evidence_ids
             if evidence_id not in allowed_evidence
         }
+        invalid_evidence.update(
+            evidence_id
+            for change in decision.requested_changes
+            for evidence_id in change.evidence_ids
+            if evidence_id not in allowed_evidence
+        )
         if invalid_evidence:
             raise FoundryResponseError(
                 f"Microsoft Foundry cited invalid evidence: {invalid_evidence}"

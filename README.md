@@ -192,8 +192,10 @@ group containing:
 
 Workloads use system-assigned managed identities and Azure RBAC.
 Key-based/local authentication is disabled for Foundry, Storage, and Cosmos DB.
-The current reference deployment still uses public service endpoints, and web
-ingress is restricted only by a caller-supplied CIDR. See
+Container Apps use a dedicated VNet and private endpoints/private DNS for
+Cosmos DB and Blob Storage. Foundry, ACR, and telemetry remain public
+identity-protected endpoints, while web ingress is restricted by a
+caller-supplied CIDR. See
 [Architecture](docs/architecture.md) and the [threat model](docs/threat-model.md)
 before deploying.
 
@@ -327,6 +329,8 @@ azd env new fdt-demo
 azd env set AZURE_SUBSCRIPTION_ID "<subscription-id>"
 azd env set AZURE_LOCATION "<azure-region>"
 azd env set DEMO_ALLOWED_IP_CIDR "<public-ip>/32"
+# Optional when your corporate proxy rotates between two egress addresses:
+azd env set DEMO_ADDITIONAL_ALLOWED_IP_CIDR "<second-public-ip>/32"
 
 # Optional: override defaults with a model/version/SKU available in your region.
 azd env set AZURE_AI_MODEL_NAME "<model-name>"
@@ -336,6 +340,13 @@ azd env set AZURE_AI_MODEL_CAPACITY "<capacity>"
 
 azd up
 ```
+
+> [!IMPORTANT]
+> Container Apps network type is immutable. Environments created from an older
+> public-network revision of this repository cannot be upgraded in place.
+> Because this is a synthetic, non-production reference environment, run
+> `azd down --purge`, confirm deletion, and deploy fresh with `azd up`.
+> Preflight blocks a partial in-place migration.
 
 The preprovision hook checks provider registration, model availability, SKU,
 and incremental quota. The postdeploy hook updates both jobs to the deployed web
@@ -347,8 +358,9 @@ deployment is still a non-production demo, not a banking control environment.
 
 The provisioned job evaluates three variants for 120 profiles—360 model
 requests—then persists profiles/artifacts and structured run decisions. It has a
-two-hour execution timeout, no replica retry, and a concurrency bound of eight
-inside the application. Review quota and cost before starting it.
+two-hour execution timeout, no replica retry, Retry-After backoff, and a batch
+concurrency bound of two inside the application. Interactive Foundry requests
+remain globally bounded at eight. Review quota and cost before starting it.
 
 ```powershell
 $subscription = azd env get-value AZURE_SUBSCRIPTION_ID
@@ -428,16 +440,17 @@ data-handling policy.
   bounded agent payloads reduce risk; they do not make this production-ready.
 - The reference web app uses an IP allow-list rather than Microsoft Entra
   application authentication.
-- Foundry, Storage, Cosmos DB, ACR, and telemetry endpoints remain publicly
-  reachable in the reference topology, subject to identity/service controls.
+- Cosmos DB and Blob Storage are reached through private endpoints and private
+  DNS from the Container Apps VNet. Foundry, ACR, and telemetry remain public
+  endpoints subject to identity and service controls.
 - Model deployments using a global SKU can process outside the deployment
   region; review current Azure terms and data-zone requirements.
 - Telemetry should contain IDs, versions, hashes, latency, and token counts—not
   raw profiles, audit attributes, or sensitive content.
-- A banking deployment would additionally require private endpoints, VNet
-  integration, private DNS, controlled egress, application authentication,
-  organization policy, key-management decisions, monitoring, and incident
-  response.
+- A production banking deployment would additionally require controlled egress,
+  application authentication, network controls for the remaining public
+  services, organization policy, key-management decisions, monitoring, and
+  incident response.
 
 Read [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
 Report vulnerabilities through GitHub private vulnerability reporting, never a

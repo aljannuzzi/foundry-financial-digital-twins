@@ -42,6 +42,12 @@ def _parser() -> argparse.ArgumentParser:
         default=Path("output/foundry-simulation.json"),
     )
     foundry.add_argument("--azure", action="store_true")
+    foundry.add_argument(
+        "--concurrency",
+        type=int,
+        choices=range(1, 9),
+        default=2,
+    )
 
     validate = subparsers.add_parser("validate", help="Validate population invariants")
     validate.add_argument("--count", type=int, default=120)
@@ -77,6 +83,7 @@ def main() -> None:
             service.simulate_foundry(
                 bundle.profiles,
                 bundle.manifest.profile_digest,
+                concurrency=args.concurrency,
             )
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -7,7 +7,9 @@ param environmentName string
 param location string = 'eastus2'
 param principalId string
 param allowedIpCidr string
+param additionalAllowedIpCidr string = ''
 param webExists bool = false
+param webImageName string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 param modelName string = 'gpt-5.4-mini'
 param modelVersion string = '2026-03-17'
 param modelSkuName string = 'GlobalStandard'
@@ -33,7 +35,9 @@ module resources './resources.bicep' = {
     location: location
     principalId: principalId
     allowedIpCidr: allowedIpCidr
+    additionalAllowedIpCidr: additionalAllowedIpCidr
     webExists: webExists
+    webImageName: webImageName
     modelName: modelName
     modelVersion: modelVersion
     modelSkuName: modelSkuName

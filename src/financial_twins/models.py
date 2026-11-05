@@ -146,6 +146,14 @@ class DecisionReason(BaseModel):
     contribution: float = Field(ge=-1, le=1)
 
 
+class RequestedChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item: str = Field(min_length=1, max_length=100)
+    requested_value: str = Field(min_length=1, max_length=500)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
 class TwinDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -156,7 +164,7 @@ class TwinDecision(BaseModel):
     fit_score: float = Field(ge=0, le=100)
     confidence: float = Field(ge=0, le=1)
     reasons: list[DecisionReason] = Field(min_length=1)
-    requested_changes: list[str]
+    requested_changes: list[RequestedChange]
     missing_information: list[str]
     unsupported_inferences: list[str]
     policy_flags: list[str]

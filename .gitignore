@@ -13,6 +13,7 @@ coverage.xml
 htmlcov/
 infra/main.json
 infra/resources.json
+infra/*-validated.json
 infra/main.parameters.override.json
 output/
 ui/dist/

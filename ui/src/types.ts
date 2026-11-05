@@ -46,7 +46,11 @@ export interface TwinDecision {
     evidence_ids: string[]
     contribution: number
   }>
-  requested_changes: string[]
+  requested_changes: Array<{
+    item: string
+    requested_value: string
+    evidence_ids: string[]
+  }>
 }
 
 export interface VariantSummary {
