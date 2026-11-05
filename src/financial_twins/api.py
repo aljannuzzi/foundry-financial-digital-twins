@@ -152,6 +152,7 @@ async def simulate(request: SimulateRequest) -> dict:
 
 STATIC_DIR = Path(os.getenv("STATIC_DIR", Path.cwd() / "ui" / "dist")).resolve()
 if STATIC_DIR.exists():
+    index_file = STATIC_DIR / "index.html"
     assets = STATIC_DIR / "assets"
     if assets.exists():
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
@@ -160,9 +161,6 @@ if STATIC_DIR.exists():
     def spa(full_path: str) -> FileResponse:
         if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="API route not found")
-        candidate = (STATIC_DIR / full_path).resolve()
-        if not candidate.is_relative_to(STATIC_DIR):
+        if ".." in full_path.replace("\\", "/").split("/"):
             raise HTTPException(status_code=404, detail="File not found")
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(index_file)
